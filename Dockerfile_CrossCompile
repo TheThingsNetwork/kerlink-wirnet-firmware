@@ -1,0 +1,90 @@
+#################################################
+# This DockerFile is for Cross compiling the   	# 
+# Semtech Lora software for LoRa gatway by 	   	#
+# Kerlink. 	 	 							   	#
+#												#
+# Because of the agressive caching done by		#	 
+# docker. Always build with the --no-caching 	#
+# flag.											#
+#												#
+# For GitHub Config replace {username}, 	   	#
+# {email}, {password} by your own credentials  	#
+# As for the GitHub fork url of  			   	#
+# {lora_gateway} and {packet_forwarder}		   	#
+#											   	#
+# For sake of kerlinkm2mtechnologies the 	   	#
+# username and password required to get    		#
+# their toolchain are removed. 				   	#
+# {wikiuser} and {wikipasswd}                  	#  
+#												#
+# Made by Fokko Visser 2015						#						
+#################################################
+
+
+#	Setting up VM	##
+
+	#Using latest lts Ubuntu
+	FROM ubuntu:12.04
+
+	#Update PackageManager
+	RUN apt-get -y update
+	#Update System
+	RUN apt-get -y upgrade
+
+#	Some things to make it work!
+
+	RUN apt-get -y install wget apt-utils make 
+
+	#Make sure we got ia32-libs onboard
+	RUN apt-get -y install ia32-libs
+
+	#We want to use git > install 
+	#Use --fix-missing!
+	RUN apt-get -y install git --fix-missing
+	RUN git config --global user.name "{username}"
+	RUN git config --global user.email "{email}"
+
+#	following wikikerlink
+#	http://wikikerlink.fr/lora-station/doku.php?id=wiki:sdk
+
+	#Install dependencies
+	RUN apt-get -y install u-boot-tools lzma zlib1g-dev bison flex yodl
+	
+	#Get toolchain
+	RUN wget ftp://{wikiuser}:{wikipasswd}@ftp.kerlinkm2mtechnologies.fr/_kerlink/arm-2011.03-wirma2-r59.tar.xz
+	RUN mkdir /opt/toolchains
+	WORKDIR /opt/toolchains
+	RUN tar xJf /arm-2011.03-wirma2-r59.tar.xz
+	RUN rm /arm-2011.03-wirma2-r59.tar.xz
+	ENV PATH=$PATH:/opt/toolchains/arm-2011.03-wirma2/bin
+	ENV CROSS_COMPILE=arm-none-linux-gnueabi-
+
+#	Fetch, build and push
+	RUN mkdir /root/buildroot
+	WORKDIR /root/buildroot
+	RUN git clone https://{username}:{password}@{lora_gateway}
+	RUN git clone https://{username}:{password}@{packet_forwarder}
+	WORKDIR /root/buildroot/lora_gateway
+	RUN git pull
+	RUN make
+	RUN git add -A
+	RUN git commit -m Compiled; exit 0
+	RUN git push
+	WORKDIR /root/buildroot/packet_forwarder
+	RUN git pull
+	RUN make
+	RUN git add -A
+	RUN git commit -m Compiled; exit 0
+	RUN git push
+
+# All Done
+	RUN echo "\n \n All Done! \n \n"
+
+
+
+
+
+
+
+
+
