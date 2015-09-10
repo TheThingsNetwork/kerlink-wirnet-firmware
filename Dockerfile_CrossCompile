@@ -1,23 +1,23 @@
 #################################################
 # This DockerFile is for Cross compiling the   	# 
-# Semtech Lora software for LoRa gatway by 	   	#
-# Kerlink. 	 	 							   	#
-#												#
-# Because of the agressive caching done by		#	 
+# Semtech Lora software for LoRa gatway by 	#
+# Kerlink. 	 	 			#
+#						#
+# Because of the agressive caching done by	#	 
 # docker. Always build with the --no-caching 	#
-# flag.											#
-#												#
-# For GitHub Config replace {username}, 	   	#
+# flag.						#
+#						#
+# For GitHub Config replace {username}, 	#
 # {email}, {password} by your own credentials  	#
-# As for the GitHub fork url of  			   	#
-# {lora_gateway} and {packet_forwarder}		   	#
-#											   	#
-# For sake of kerlinkm2mtechnologies the 	   	#
-# username and password required to get    		#
-# their toolchain are removed. 				   	#
+# As for the GitHub fork url of  		#
+# {lora_gateway} and {packet_forwarder}		#
+#						#
+# For sake of kerlinkm2mtechnologies the 	#
+# username and password required to get    	#
+# their toolchain are removed. 			#
 # {wikiuser} and {wikipasswd}                  	#  
-#												#
-# Made by Fokko Visser 2015						#						
+#						#
+# Made by Fokko Visser 2015			#
 #################################################
 
 
