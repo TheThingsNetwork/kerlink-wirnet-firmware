@@ -1,6 +1,6 @@
 This DockerFile is for Cross compiling the Semtech Lora software for LoRa gatway by Kerlink.
 
-For sake of kerlinkm2mtechnologies the username and password required to get their toolchain are removed. Replace __{wikiuser}__ and __{wikipasswd}__ in _resources/get_toolchain.sh_
+For sake of kerlinkm2mtechnologies the username and password required to get their toolchain are removed. Replace __{wikiuser}__ and __{wikipasswd}__ in *resources/get_toolchain.sh*
 
 1. Clone git
 2. Start Docker terminal
