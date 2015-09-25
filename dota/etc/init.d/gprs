@@ -1,0 +1,261 @@
+#!/bin/sh
+# Begin /etc/rc.d/init.d/network
+
+. /etc/rc.d/init.d/functions
+. /etc/sysconfig/network
+
+if [ -f /tmp/gprs ]; then  
+  . /tmp/gprs
+fi
+
+PPPD=pppd
+CHAT=/usr/sbin/chat
+TTY=/dev/gsm_ppp
+TTY_CMUX=/dev/cmux1
+
+# PPP connect timeout (in seconds)
+PPP_TIMEOUT=30
+
+CHATSTART="/tmp/chatstart"
+PPP_UP="/etc/ppp/ip-up"
+PPP_DOWN="/etc/ppp/ip-down"
+PPP_OPTIONFILE="/etc/ppp/options"
+PPP_IPUP_LOCKFILE="/tmp/gprs_ipup.ok"
+PPP_STATFILE="/etc/ppp/stats"
+
+if [ -f /tmp/gprs.ok ]; then
+  rm -f /tmp/gprs.ok
+fi
+
+if [ -f /tmp/gprs.ko ]; then
+  rm -f /tmp/gprs.ko
+fi
+
+construct_chatscript()
+{
+
+	cat << EOF > ${CHATSTART}
+'' '\dAT+CGDCONT=1,"IP","${GPRSAPN}"'
+'OK' 'ATDT*99***1#'
+'CONNECT'
+EOF
+
+}
+
+init_ppp_files()
+{
+	mkdir -p /etc/ppp
+
+   cat << EOF > ${PPP_DOWN}
+#!/bin/sh
+#
+# ip-down : Called by pppd if link is terminated
+#
+PPP_IFACE="\$1"
+
+. /etc/rc.d/init.d/network_functions
+
+notify_interface_disconnect \${PPP_IFACE}
+
+EOF
+  chmod 755 ${PPP_DOWN}
+
+   cat << EOF > ${PPP_UP}
+#!/bin/sh
+#
+# ip-up : Called by pppd if negotiation OK
+#
+PPP_IFACE="\$1"
+PPP_TTY="\$2"
+PPP_SPEED="\$3"
+PPP_LOCAL="\$4"
+PPP_REMOTE="\$5"
+PPP_IPPARAM="\$6"
+
+. /etc/rc.d/init.d/network_functions
+
+if [ 1 -eq \$USEPEERDNS ]
+then
+	cp -f /etc/ppp/resolv.conf /tmp/resolv.conf.\${PPP_IFACE}
+else
+	# PR1088: restore old resolv
+	mv /tmp/resolv.conf.bak /etc/resolv.conf
+fi
+
+add_default_route_and_resolv \${PPP_IFACE}
+
+# PR1088 : If ppp0 is not default route, restore old resolv
+if [ \$? -ne 0 ]
+then
+	mv /tmp/resolv.conf.bak /etc/resolv.conf
+fi
+
+touch ${PPP_IPUP_LOCKFILE}
+EOF
+  chmod 755 ${PPP_UP} 
+
+   cat << EOF > ${PPP_OPTIONFILE}
+modem
+lock
+
+# Timeout of 3 seconds / response is suficient
+connect '/usr/sbin/chat -t 3 -v -f ${CHATSTART}'
+# Connection will be closed by LCP termReq sent by pppd
+# Do not need disconnect script
+
+# Maximum Configure requests (IP negotiation)
+lcp-max-configure 5
+# Configure request timeout (in seconds)
+lcp-restart 2
+
+# No TCP compression (in our case, it ADD traffic rather than reducing it)
+novj
+
+# Debug options
+show-password
+debug
+EOF
+}
+
+
+exit_ok()
+{
+  echo "RES_OK"
+  /bin/touch /tmp/gprs.ok
+  exit 1
+}
+    
+exit_ko()
+{
+  echo "RES_KO"
+  /bin/touch /tmp/gprs.ko
+  exit 0
+}
+
+start_ppp()
+{
+  [ -f ${PPP_OPTIONFILE} ] || init_ppp_files
+  construct_chatscript
+
+  # Fill with dynamic variables
+  #PPP_OPTIONS="user ${GPRSUSER:=user} password ${GPRSPASSWORD:=password}"
+  [ ${GPRSUSER} ] && PPP_OPTIONS="user ${GPRSUSER} password ${GPRSPASSWORD}"
+   
+  [ ${GPRSDNS} = "yes" ] && PPP_OPTIONS="${PPP_OPTIONS} usepeerdns"
+  
+  if [ -f ${TTY_CMUX} ]; then
+    TTY=${TTY_CMUX}
+  fi
+
+  # patch PR1088 : Connection will fail if a resolv.con is present
+  [ -f /etc/resolv.conf ] && mv /etc/resolv.conf /tmp/resolv.conf.bak
+
+  rm -f ${PPP_IPUP_LOCKFILE}
+
+  ${PPPD} ${TTY} 115200 ${PPP_OPTIONS}
+  
+  for t in `seq 0 $((${PPP_TIMEOUT}*2))`
+  do
+	  [ -f ${PPP_IPUP_LOCKFILE} ] && return 0
+
+	  # If PPPD is down, exit KO
+	  pidof pppd > /dev/null
+	  [ 0 -ne $? ] && break
+
+	  usleep 500000
+  done
+  
+  echo "PPPD could not be initiated"  
+  # patch PR1088
+  [ -f /tmp/resolv.conf.bak ] && mv /tmp/resolv.conf.bak /etc/resolv.conf
+  exit_ko
+}
+
+stop_ppp()
+{
+  IFSTART=`/bin/ps | /bin/grep ${PPPD} | /bin/grep -v grep`
+  if [ "${IFSTART}" ]; then
+    killproc ${PPPD}
+  fi
+}
+
+update_stats()
+{
+  get_stats
+  [ $? -ne 0 ] && return 1
+
+  cat > ${PPP_STATFILE} << EOF
+SESSION_RX=0
+SESSION_TX=0
+GLOBAL_RX=$((${GLOBAL_RX:=0} + ${rx:=0}))
+GLOBAL_TX=$((${GLOBAL_RX:=0} + ${tx:=0}))
+EOF
+}
+
+get_stats()
+{
+	[ ! -d "/etc/ppp" ] && mkdir -p /etc/ppp
+
+	if [ ! -f ${PPP_STATFILE} ]
+	then
+		cat > ${PPP_STATFILE} << EOF
+SESSION_RX=0
+SESSION_TX=0
+GLOBAL_RX=0
+GLOBAL_TX=0
+EOF
+	fi
+
+	source ${PPP_STATFILE}
+
+	# Exit if ppp is not started
+	grep "ppp" /proc/net/dev > /dev/null 2>&1 || return 1
+
+	# Update Session stats
+	rx=$(cat /proc/net/dev | grep ppp | awk '{print $2}')
+	tx=$(cat /proc/net/dev | grep ppp | awk '{print $10}')
+	sed -i 's/SESSION_RX.*/SESSION_RX='$rx'/' ${PPP_STATFILE}
+	sed -i 's/SESSION_TX.*/SESSION_TX='$rx'/' ${PPP_STATFILE}
+
+	# Print instant stats
+	echo "Session: Rx=$rx, Tx=$tx"
+	echo "Globals: Rx=${GLOBAL_RX}, Tx=${GLOBAL_TX}"
+	echo "Sum:     Rx=$((${GLOBAL_RX:=0} + $rx)), Tx=$((${GLOBAL_TX:=0} + $tx))"
+}
+
+case "$1" in
+  start|restart)
+    update_stats
+    stop_ppp
+    start_ppp
+    exit_ok
+    ;;
+
+  stop)
+    update_stats
+    stop_ppp
+    exit_ok
+    ;;
+
+  reload)
+    # Check deamon is started
+    pidof pppd > /dev/null
+    [ $? -ne 0 ] && start_ppp
+
+    # TODO : Check it is still working
+    # ping DNS
+
+    exit_ok
+    ;;
+
+  status)
+    status ${PPPD}
+    [ $? -eq 0 ] && get_stats
+    ;;
+
+  *)
+    echo "Usage: $0 {start|stop|restart|reload|status}"
+    exit 1
+    ;;
+esac
+# End /etc/rc.d/1init.d/network
