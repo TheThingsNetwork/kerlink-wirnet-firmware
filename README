@@ -1,5 +1,5 @@
 #Kerlink station
-This repository is for gathering software en tool to use the Kerlink Gateway with The Things Network
+This repository is for gathering software en tools to use the Kerlink Gateway with The Things Network
 
 ##Bin
 This is a compiled version of the lora_gateway and packet_forwarder for the Kerlink Lora IoT Station.
