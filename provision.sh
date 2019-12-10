@@ -40,7 +40,7 @@ fi
 
 # setLorafwdKey uses ${1} to set ${2} to ${3} in Lorafwd config.
 function setLorafwdKey {
-    ${1} "sed -i 's/^#\?[[:space:]]*${2}[[:space:]]*=.*/${2} = ${3}/' '${userDir}/lorafwd/etc/lorafwd.toml'"
+    ${1} "sed -i 's/^#\?[[:space:]]*${2}[[:space:]]*=.*/${2} = ${3//\//\\/}/' '${userDir}/lorafwd/etc/lorafwd.toml'"
 }
 
 # setLorafwdKeyQuoted is like setLorafwdKey, but surrounds ${3} by quotes.
