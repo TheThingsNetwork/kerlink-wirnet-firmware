@@ -286,6 +286,35 @@ function provision {
             printf "CPF installation failed, please install CPF and rerun the script\n" >&2
             return 1
         fi
+
+        printf "Querying available frequency plan templates...\n" >&2
+        local fps=()
+        for fp in $(${sshCmd} "ls ${userDir}/lorad/etc/*CH*.json"); do
+            local name="${fp}"
+            name="${name%'.json'}"
+            name="${name#"${userDir}/lorad/etc/"}"
+            fps+=( "${name}" )
+        done
+
+        printf "Available frequency plan templates are:\n" >&2
+        for i in "${!fps[@]}"; do
+            printf "${i}) ${fps[${i}]}\n" >&2
+        done
+        local -i fpIdx
+        while :; do
+            local fpIdxStr
+            read -r -p "Please select a frequency plan template to use for lorad configuration.[0-$(( ${#fps[@]} - 1 ))]" fpIdxStr
+            printf '\n' >&2
+            if [[ "${fpIdxStr}" =~ ^[0-9]+$ ]] && [[ ${fpIdxStr} -ge 0 ]] && [[ ${fpIdxStr} -lt ${#fps[@]} ]]; then
+                fpIdx=${fpIdxStr}
+                break
+            else
+                printf "Invalid input: '${fpIdxStr}'\n" >&2
+            fi
+        done
+
+        printf "Setting frequency plan template to '${fps[${fpIdx}]}'...\n" >&2
+        ${sshCmd} "ln -sf ${fps[${fpIdx}]}.json ${userDir}/lorad/etc/lorad.json"
     fi
 
     printf "Setting LNS address to ${stackAddr}...\n" >&2
