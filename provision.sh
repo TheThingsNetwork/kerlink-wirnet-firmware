@@ -325,6 +325,16 @@ function provision {
 
     printf "Setting LNS downlink port to ${downlinkPort}...\n" >&2
     setLorafwdKey "${sshCmd}" "service.downlink" "${downlinkPort}"
+
+    read -r -n 1 -p "Provisioning successfully finished, restart packet forwader?[y/n]" ans
+    printf '\n' >&2
+    if [[ ! "${ans}" = "y" ]]; then
+        printf "Please manually restart the packet forwarder by executing \`ssh root@${gatewayAddr} /etc/init.d/knet restart\`\n" >&2
+        return 0
+    fi
+    printf "Restarting packet forwarder...\n" >&2
+    ${sshCmd} "/etc/init.d/knet restart"
+    return 0
 }
 
 provision "${1}" "${2}"
