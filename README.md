@@ -16,8 +16,6 @@ The script prompts you before installing firmware and/or rebooting the gateway. 
 
 The script is compatible with any Kerlink Wirnet Station gateway running firmare version `3.0` and above.
 
-> NOTE: Your SSH public key must be authorized for root user on the gateway.
-
 ## Examples
 
 - `./provision.sh '192.168.188.101' 'https://thethings.example.com'`
