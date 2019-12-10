@@ -105,7 +105,7 @@ function isUp {
     ping -q -c 1 "${gatewayAddr}" > /dev/null 
 }
 
-sshParams="-o ConnectTimeout=1 -o BatchMode=yes"
+sshParams="-o ConnectTimeout=1"
 
 # pushAndReboot downloads ${2}, checks that it's sha256sum matches ${3} and if it does, pushes it to root@${1}:${userDir}/dota/dota.tar.gz via `scp`, performs a reboot of ${1} via `ssh` and waits until ${1} boots up. 
 function pushAndReboot {
@@ -264,9 +264,6 @@ function provision {
                                 "63c606af73f983fcb9122086099acf01c5498ff92a06bc76a78b6e0bcdf269ba"
                 
                 ssh-keygen -R "${gatewayAddr}"
-
-                read -r -n 1 -p "Please add your public SSH key to ~/.ssh/authorized_keys on the gateway (e.g. by 'ssh-copy-id "root@${gatewayAddr}"') and press any key to continue"
-                printf '\n' >&2
 
                 firmwareVersion "${sshCmd}" fwVer
                 if [[ ! "${fwVer}" = 3.6 ]]; then
