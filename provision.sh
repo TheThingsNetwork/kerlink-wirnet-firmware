@@ -11,42 +11,13 @@ uplinkPort=1700
 downlinkPort=1700
 
 userDir="/mnt/fsuser-1"
+loradDir="${userDir}/lorad"
+lorafwdDir="${userDir}/lorafwd"
 dotaName="dota.tar.gz"
 
 updateAndRetryFmt="please update gateway firmware to at least version '%s' and rerun the script"
 
-function printUsage {
-    printf "Usage: $0 GATEWAY-ADDRESS STACK-ADDRESS\n" >&2
-}
-
-if [[ $# -ne 2 ]] ; then
-    printf "${0} takes exactly 2 arguments, got %d\n" $# >&2
-    printUsage
-    exit 1
-fi
-
-if [[ -z ${1} ]]; then
-    printf 'Gateway address must be set\n' >&2
-    printUsage
-    exit 1
-fi
-
-if [[ -z ${2} ]]; then
-    printf 'Stack address must be set\n' >&2
-    printUsage
-    exit 1
-fi
-
-
-# setLorafwdKey uses ${1} to set ${2} to ${3} in Lorafwd config.
-function setLorafwdKey {
-    ${1} "sed -i 's/^#\?[[:space:]]*${2}[[:space:]]*=.*/${2} = ${3//\//\\/}/' '${userDir}/lorafwd/etc/lorafwd.toml'"
-}
-
-# setLorafwdKeyQuoted is like setLorafwdKey, but surrounds ${3} by quotes.
-function setLorafwdKeyQuoted {
-    setLorafwdKey "${1}" "${2}" "\"${3}\""
-}
+sshParams="-o ConnectTimeout=3"
 
 function sshExec {
     ${1} "sh -l -c '${2}'"
@@ -105,10 +76,8 @@ function isUp {
     ping -q -c 1 "${gatewayAddr}" > /dev/null 
 }
 
-sshParams="-o ConnectTimeout=1"
-
-# pushAndReboot downloads ${2}, checks that it's sha256sum matches ${3} and if it does, pushes it to root@${1}:${userDir}/dota/dota.tar.gz via `scp`, performs a reboot of ${1} via `ssh` and waits until ${1} boots up. 
-function pushAndReboot {
+# pushFirmware downloads ${2}, checks that it's sha256sum matches ${3} and if it does, pushes it to root@${1}:${userDir}/dota/dota.tar.gz via `scp`, performs a reboot of ${1} via `ssh` and waits until ${1} boots up. 
+function pushFirmware {
     local gatewayAddr=${1}
     local url=${2}
     local sha256=${3}
@@ -205,14 +174,70 @@ function pushAndReboot {
     return 0
 }
 
+# pushConfig downloads ${2} and pushes it to root@${1}:${3} via `scp`. 
+function pushConfig {
+    local gatewayAddr=${1}
+    local apiKey=${2}
+    local url=${3}
+    local gatewayPath=${4}
+
+    local tmpDir
+    tmpDir="$(mktemp -d)"
+    pushd "${tmpDir}" > /dev/null
+
+    local localPath="${tmpDir}/conf"
+
+    local err
+    set +e
+
+    printf "Downloading config from '${url}' to '${localPath}' locally...\n" >&2
+    err=$(curl -H "Authorization: Bearer ${apiKey}" -fsSLJo 'conf' "${url}" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        printf "Config download failed:\n" >&2
+        printf "${err}\n" >&2
+        set -e
+        return 1
+    fi
+    set -e
+
+    local name="lorawan-stack-$(basename "${gatewayPath}")"
+    local pushPath="$(dirname "${gatewayPath}")/${name}"
+
+    printf "Pushing '${localPath}' to '${pushPath}'...\n" >&2
+    set +e
+    err=$(scp ${sshParams} "${localPath}" "root@${gatewayAddr}:${pushPath}" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        printf "Config push failed:\n" >&2
+        printf "${err}\n" >&2
+        set -e
+        return 1
+    fi
+    set -e
+
+    printf "Symlinking '${gatewayPath}' to '${pushPath}'...\n" >&2
+    set +e
+    err=$(ssh ${sshParams} root@${gatewayAddr} "ln -fsb '${name}' '${gatewayPath}'" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        printf "Symlinking config failed:\n" >&2
+        printf "${err}\n" >&2
+        set -e
+        return 1
+    fi
+    set -e
+
+    popd > /dev/null
+    rm -rf "${tmpDir}"
+
+    return 0
+}
+
 function isCPFInstalled {
     local -n ret=$1
-    local configPath="${userDir}/lorafwd/etc/lorafwd.toml"
     set +e
-    err=$(${sshCmd} "test -f ${configPath}" 2>&1)
+    err=$(${sshCmd} "test -d ${loradDir}/etc && test -d ${lorafwdDir}/etc" 2>&1)
     if [[ $? -ne 0 ]]; then
         if [[ -n "${err}" ]]; then
-            printf "Testing if '${configPath}' exists on gateway failed:\n" >&2
+            printf "Testing if CPF is installed on gateway failed:\n" >&2
             printf "${err}\n" >&2
             set -e
             return 1
@@ -229,6 +254,8 @@ function isCPFInstalled {
 function provision {
     local gatewayAddr="${1}"
     local stackAddr="${2}"
+    local gatewayID="${3}"
+    local apiKey="${4}"
 
     local sshCmd="ssh ${sshParams} root@${gatewayAddr}"
 
@@ -259,7 +286,7 @@ function provision {
                     return 1
                 fi
 
-                pushAndReboot   "${gatewayAddr}" \
+                pushFirmware    "${gatewayAddr}" \
                                 "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/wirnet-3.6/fwupgrade_wirmav2_wirnet_v3.6.tar.gz" \
                                 "63c606af73f983fcb9122086099acf01c5498ff92a06bc76a78b6e0bcdf269ba"
                 
@@ -271,13 +298,13 @@ function provision {
                     return 1
                 fi
 
-                pushAndReboot   "${gatewayAddr}" \
+                pushFirmware    "${gatewayAddr}" \
                                 "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/wirnet-3.6/custo_knetd-4.12.tar.gz" \
                                 "503aa5336ed5ee3b674a682dfae4f3964038b00e7380e3ee7b1505b01a9678cb"
                 ;;
         esac
 
-        pushAndReboot   "${gatewayAddr}" \
+        pushFirmware    "${gatewayAddr}" \
                         "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/cpf-1.1.6/dota_cpf_1.1.6-1.tar.gz" \
                         "df442b0dbfffe1cb878ae1471c44498454e99fc09044f08e1c51941a27e08f8c"
 
@@ -288,14 +315,51 @@ function provision {
         fi
     fi
 
-    printf "Setting LNS address to ${stackAddr}...\n" >&2
-    setLorafwdKeyQuoted "${sshCmd}" "node" "${stackAddr}"
+    pushConfig  "${gatewayAddr}" \
+                "${apiKey}" \
+                "${stackAddr}/api/v3/gcs/gateways/${gatewayID}/kerlink-cpf/lorad/lorad.json" \
+                "${loradDir}/etc/lorad.json"
 
-    printf "Setting LNS uplink port to ${uplinkPort}...\n" >&2
-    setLorafwdKey "${sshCmd}" "service.uplink" "${uplinkPort}"
+    pushConfig  "${gatewayAddr}" \
+                "${apiKey}" \
+                "${stackAddr}/api/v3/gcs/gateways/${gatewayID}/kerlink-cpf/lorafwd/lorafwd.toml" \
+                "${lorafwdDir}/etc/lorafwd.toml"
 
-    printf "Setting LNS downlink port to ${downlinkPort}...\n" >&2
-    setLorafwdKey "${sshCmd}" "service.downlink" "${downlinkPort}"
+    read -r -n 1 -p "Provisioning successfully finished, restart packet forwader?[y/n]" ans
+    printf '\n' >&2
+    if [[ ! "${ans}" = "y" ]]; then
+        printf "Please manually restart the packet forwarder by executing \`ssh root@${gatewayAddr} /etc/init.d/knet restart\`\n" >&2
+        return 0
+    fi
+    printf "Restarting packet forwarder...\n" >&2
+    ${sshCmd} "/etc/init.d/knet restart"
+    return 0
 }
 
-provision "${1}" "${2}"
+function printUsage {
+    printf "Usage: $0 gateway-address stack-address gateway-id api-key\n" >&2
+}
+
+if [[ $# -ne 4 ]] ; then
+    printf "${0} takes exactly 4 arguments, got %d\n" $# >&2
+    printUsage
+    exit 1
+elif [[ -z ${1} ]]; then
+    printf 'Gateway address must be set\n' >&2
+    printUsage
+    exit 1
+elif [[ -z ${2} ]]; then
+    printf 'Stack address must be set\n' >&2
+    printUsage
+    exit 1
+elif [[ -z ${3} ]]; then
+    printf 'Gateway ID must be set\n' >&2
+    printUsage
+    exit 1
+elif [[ -z ${4} ]]; then
+    printf 'API key must be set\n' >&2
+    printUsage
+    exit 1
+fi
+
+provision "${1}" "${2}" "${3}" "${4}"
