@@ -111,7 +111,12 @@ function pushWirnetStationFirmware {
         printf "Checksum matching failed:\n" >&2
         printf "${err}\n" >&2
         set -e
-        return 1
+        read -r -n 1 -p "Continue?[y/n]" ans
+        printf '\n' >&2
+        if [[ ! "${ans}" = "y" ]]; then
+            return 1
+        fi
+        return 0
     fi
     set -e
 
