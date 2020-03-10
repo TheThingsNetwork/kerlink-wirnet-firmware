@@ -111,7 +111,12 @@ function pushWirnetStationFirmware {
         printf "Checksum matching failed:\n" >&2
         printf "${err}\n" >&2
         set -e
-        return 1
+        read -r -n 1 -p "Continue?[y/n]" ans
+        printf '\n' >&2
+        if [[ ! "${ans}" = "y" ]]; then
+            return 1
+        fi
+        return 0
     fi
     set -e
 
@@ -319,7 +324,6 @@ function provision {
                         fi
 
                         pushWirnetStationFirmware   "${gatewayAddr}" \
-                                                    "${userDir}" \
                                                     "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/wirnet-3.6/fwupgrade_wirmav2_wirnet_v3.6.tar.gz" \
                                                     "63c606af73f983fcb9122086099acf01c5498ff92a06bc76a78b6e0bcdf269ba"
                         
@@ -332,14 +336,12 @@ function provision {
                         fi
 
                         pushWirnetStationFirmware   "${gatewayAddr}" \
-                                                    "${userDir}" \
                                                     "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/wirnet-3.6/custo_knetd-4.12.tar.gz" \
                                                     "503aa5336ed5ee3b674a682dfae4f3964038b00e7380e3ee7b1505b01a9678cb"
                         ;;
                 esac
 
                 pushWirnetStationFirmware   "${gatewayAddr}" \
-                                            "${userDir}" \
                                             "https://github.com/TheThingsNetwork/kerlink-station-firmware/releases/download/cpf-1.1.6/dota_cpf_1.1.6-1.tar.gz" \
                                             "df442b0dbfffe1cb878ae1471c44498454e99fc09044f08e1c51941a27e08f8c"
 
