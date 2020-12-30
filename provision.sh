@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-if ((BASH_VERSINFO[0] < 4))
-then 
-  printf "Your bash version '${BASH_VERSION}' is too low, please update to at least version '4.0.0' and rerun the script\n" >&2
+if ((BASH_VERSINFO[0] < 4)) || ((BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 3))
+then
+  printf "Your bash version '${BASH_VERSION}' is too low, please update to at least version '4.3.0' and rerun the script\n" >&2
   exit 1 
 fi
 
